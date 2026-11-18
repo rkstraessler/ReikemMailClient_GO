@@ -26,4 +26,4 @@ jobs:
           go-version-file: go.mod
           cache: false
       - run: git ls-files -z '*.go' | xargs -0r gofmt -w --
-      - uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1
+      - uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1.3.4

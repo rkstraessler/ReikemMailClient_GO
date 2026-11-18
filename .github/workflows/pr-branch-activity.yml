@@ -1,0 +1,17 @@
+name: PR branch activity
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    types: [opened, reopened, edited]
+
+permissions: {}
+
+jobs:
+  signal:
+    name: Signal branch activity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - run: echo "PR maintenance will check open pull requests."

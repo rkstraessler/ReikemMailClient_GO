@@ -1,194 +1,64 @@
-name: Dependabot merge
+name: PR maintenance
 
 on:
-  pull_request_target:
-    branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_run:
+    workflows: [CI, PR branch activity]
+    types: [completed]
   push:
     branches: [main]
   schedule:
-    - cron: '37 * * * *'
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  group: dependabot-${{ github.event.pull_request.number || 'main' }}
-  cancel-in-progress: true
+  group: pr-maintenance-main
+  cancel-in-progress: false
 
 jobs:
-  classify:
+  maintain:
+    name: Maintain open pull requests
     if: >-
-      github.event_name == 'pull_request_target' &&
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      startsWith(github.event.pull_request.head.ref, 'dependabot/') &&
-      !github.event.pull_request.draft
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: write
-    outputs:
-      eligible: ${{ steps.classify.outputs.eligible }}
-    steps:
-      # The write-capable workflows use repository metadata only.
-      - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
-        id: metadata
-      - name: Classify and label update
-        if: '!cancelled()'
-        id: classify
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          SENDER: ${{ github.event.sender.login }}
-          VERIFIED: ${{ steps.metadata.outcome }}
-          UPDATE: ${{ steps.metadata.outputs.update-type }}
-          ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
-          GROUP: ${{ steps.metadata.outputs.dependency-group }}
-          MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
-        run: |
-          current=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,state,baseRefName,labels)
-          if ! jq -e --arg sha "$HEAD_SHA" '.headRefOid == $sha and .state == "OPEN" and .baseRefName == "main"' <<< "$current" >/dev/null; then
-              exit 0
-          fi
-          case "$ECOSYSTEM" in
-              gomod|go_modules) ecosystem='go' ;;
-              github_actions|github-actions) ecosystem='github-actions' ;;
-              *) ecosystem='' ;;
-          esac
-          case "$UPDATE" in
-              version-update:semver-patch) kind='patch' ;;
-              version-update:semver-minor) kind='minor' ;;
-              version-update:semver-major) kind='major' ;;
-              *) kind='' ;;
-          esac
-          labels=dependencies
-          [[ -z "$ecosystem" ]] || labels="$labels,$ecosystem"
-          [[ -z "$kind" ]] || labels="$labels,$kind"
-          case "$GROUP" in
-              go-security|go-security-compatible|actions-security|actions-security-compatible) labels="$labels,security" ;;
-          esac
-          [[ "$SENDER" != 'autofix-ci[bot]' ]] || labels="$labels,autofix"
-          decision=manual-review
-          obsolete=automerge
-          if [[ "$VERIFIED" == success && -n "$ecosystem" && "$MAINTAINER_CHANGES" == false && ( "$kind" == patch || "$kind" == minor ) ]]; then
-              decision=automerge
-              obsolete=manual-review
-          fi
-          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label "$labels,$decision"
-          if jq -e --arg label "$obsolete" 'any(.labels[]; .name == $label)' <<< "$current" >/dev/null; then
-              gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$obsolete"
-          fi
-          if [[ "$decision" == automerge ]]; then
-              echo 'eligible=true' >> "$GITHUB_OUTPUT"
-          fi
-
-  merge:
-    needs: classify
-    if: needs.classify.outputs.eligible == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 27
+      github.repository == 'rkstraessler/ReikemMailClient_GO' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' ||
+        (github.event.workflow_run.head_repository.full_name == github.repository &&
+          (github.event.workflow_run.event == 'push' ||
+           github.event.workflow_run.event == 'pull_request')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment: dependabot-maintenance
     permissions:
       actions: read
-      checks: read
-      contents: write
-      pull-requests: write
-      statuses: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      PR: ${{ github.event.pull_request.number }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-    steps:
-      - name: Wait for the required CI run on this revision
-        id: ci
-        run: |
-          for attempt in {1..96}; do
-              current=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,state,baseRefName,mergeable,mergeStateStatus,isDraft,reviewDecision)
-              if ! jq -e --arg sha "$HEAD_SHA" '.headRefOid == $sha and .state == "OPEN" and .baseRefName == "main"
-                  and (.isDraft | not) and .mergeable != "CONFLICTING" and .mergeStateStatus != "BEHIND"
-                  and .reviewDecision != "CHANGES_REQUESTED"' <<< "$current" >/dev/null; then
-                  exit 0
-              fi
-              checks=$(gh pr checks "$PR" --repo "$GITHUB_REPOSITORY" --required --json name,state,workflow,link 2>/dev/null || true)
-              if jq -e 'any(.[]; .state as $state | ["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "SKIPPED", "NEUTRAL"] | index($state) != null)' <<< "$checks" >/dev/null; then
-                  exit 0
-              fi
-              if jq -e 'length > 0 and all(.[]; .state == "SUCCESS")' <<< "$checks" >/dev/null; then
-                  run_id=$(jq -r '[.[] | select(.name == "Required CI" and .workflow == "CI")]
-                      | select(length == 1) | .[0].link | capture("/actions/runs/(?<id>[0-9]+)/job/[0-9]+$").id' <<< "$checks")
-                  if [[ "$run_id" =~ ^[0-9]+$ ]]; then
-                      run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")
-                      if jq -e --arg sha "$HEAD_SHA" --arg repo "$GITHUB_REPOSITORY" '.path == ".github/workflows/ci.yml"
-                          and .event == "pull_request" and .head_sha == $sha and .head_repository.full_name == $repo
-                          and .status == "completed" and .conclusion == "success"' <<< "$run" >/dev/null; then
-                          echo 'passed=true' >> "$GITHUB_OUTPUT"
-                          exit 0
-                      fi
-                  fi
-              fi
-              if [[ "$attempt" != 96 ]]; then sleep 15; fi
-          done
-          echo 'Required CI could not be verified.' >&2
-          exit 1
-      - name: Approve this revision and request native squash auto-merge
-        if: steps.ci.outputs.passed == 'true'
-        env:
-          REVIEW_TOKEN: ${{ secrets.DEPENDABOT_MAINTAINER_TOKEN }}
-        run: |
-          current=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,state,baseRefName,mergeable,mergeStateStatus,isDraft,reviewDecision)
-          if ! jq -e --arg sha "$HEAD_SHA" '.headRefOid == $sha and .state == "OPEN" and .baseRefName == "main"
-              and (.isDraft | not) and .mergeable == "MERGEABLE" and .mergeStateStatus != "BEHIND"
-              and .reviewDecision != "CHANGES_REQUESTED"' <<< "$current" >/dev/null; then
-              exit 0
-          fi
-          if ! jq -e '.reviewDecision == "APPROVED"' <<< "$current" >/dev/null; then
-              if [[ -z "$REVIEW_TOKEN" ]]; then
-                  echo '::notice::Maintainer approval required. The restricted review credential is not configured.'
-                  exit 0
-              fi
-              GH_TOKEN="$REVIEW_TOKEN" gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" \
-                  -f commit_id="$HEAD_SHA" -f event=APPROVE --silent
-          fi
-          gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --auto --match-head-commit "$HEAD_SHA"
-
-  rebase:
-    if: github.event_name == 'push' || github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: dependabot-maintenance
-    permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
     steps:
-      - name: Ask Dependabot to refresh stale branches
+      # A workflow run can originate from an untrusted PR. Use only main and API metadata.
+      - name: Check out trusted maintenance code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Create a repository-scoped maintenance token
+        id: app
+        if: vars.PR_AUTOMATION_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.PR_AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.PR_AUTOMATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ReikemMailClient_GO
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+      - name: Update branches and reconcile Dependabot pull requests
         env:
           GH_TOKEN: ${{ github.token }}
-          REBASE_TOKEN: ${{ secrets.DEPENDABOT_MAINTAINER_TOKEN }}
-        run: |
-          if [[ -z "$REBASE_TOKEN" ]]; then
-              exit 0
-          fi
-          base=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '[.sha, .commit.committer.date] | @tsv')
-          IFS=$'\t' read -r base_sha base_date <<< "$base"
-          reviewer=$(GH_TOKEN="$REBASE_TOKEN" gh api user --jq .login)
-          pulls=$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" -f base=main -f state=open -F per_page=100 --paginate --jq \
-              '.[] | select(.user.login == "dependabot[bot]" and (.draft | not) and .head.repo.full_name == .base.repo.full_name
-                  and (.head.ref | startswith("dependabot/"))) | [.number, .head.sha] | @tsv')
-          while IFS=$'\t' read -r pr sha; do
-              [[ -n "$pr" ]] || continue
-              behind=$(gh api "repos/$GITHUB_REPOSITORY/compare/$base_sha...$sha" --jq .behind_by)
-              (( behind > 0 )) || continue
-              commits=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/commits" --paginate)
-              if ! jq -e -s --arg sha "$sha" 'add | length > 0 and .[-1].sha == $sha
-                  and all(.[]; .author.login == "dependabot[bot]" and .commit.verification.verified)' <<< "$commits" >/dev/null; then
-                  continue
-              fi
-              comments=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate)
-              if jq -e -s --arg reviewer "$reviewer" --arg date "$base_date" 'add | any(.[];
-                  .user.login == $reviewer and .body == "@dependabot rebase" and .created_at >= $date)' <<< "$comments" >/dev/null; then
-                  continue
-              fi
-              GH_TOKEN="$REBASE_TOKEN" gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body '@dependabot rebase'
-          done <<< "$pulls"
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: go run .github/scripts/pr-maintenance.go

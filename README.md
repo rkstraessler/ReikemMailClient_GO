@@ -1,20 +1,20 @@
-# REIKEM Mail Client für Go
+# REIKEM Mail Client for Go
 
-Go-SDK für die REIKEM Mail API v2. Es unterstützt Einzelversand mit gruppierten Empfängern, personalisierte Stapel, Mailverlauf und Dateidownloads. Das Modul verwendet die Go-Standardbibliothek.
+Go SDK for the REIKEM Mail API v2. It supports sending a single message to multiple recipients, personalized batches, mail history, and file downloads. The module uses the Go standard library.
 
 ## Installation
 
-Voraussetzung ist Go 1.27.4 oder neuer. Den aktuellen Entwicklungsstand installierst du mit `@main`.
+Requires Go 1.27.4 or later. Install the tagged release for a reproducible build.
 
 ```sh
-go get github.com/rkstraessler/ReikemMailClient_GO@main
+go get github.com/rkstraessler/ReikemMailClient_GO@v1.0.0
 ```
 
-Der Importpfad steht im Schnellstart. Im Go-Code heißt das Paket `reikemmail`.
+The Go package name is `reikemmail`. Use `@main` to try the latest development version.
 
-## Schnellstart
+## Quickstart
 
-Setze `MAIL_API_URL`, `MAIL_AUTH_KEY` und `MAIL_ADAPTER_KEY` in der Umgebung. Passe im Beispiel Empfänger und Idempotenzschlüssel an den Versandauftrag an.
+Set `MAIL_API_URL`, `MAIL_AUTH_KEY`, and `MAIL_ADAPTER_KEY` in your environment. Update the recipient and idempotency key for your send request.
 
 ```go
 package main
@@ -37,50 +37,50 @@ func main() {
 		log.Fatal(err)
 	}
 
-	key := "vertrag:4711:v1"
+	key := "contract:4711:v1"
 	response, err := client.SendMail(context.Background(), reikemmail.SendMailOptions{
-		To:             []reikemmail.MailAddress{{Email: "kunde@example.org", Name: reikemmail.Some("Erika Müller")}},
-		Subject:        "Ihr Vertrag",
-		HTML:           "<p>Guten Tag, Ihr Vertrag ist verfügbar.</p>",
+		To:             []reikemmail.MailAddress{{Email: "customer@example.org", Name: reikemmail.Some("Erika Müller")}},
+		Subject:        "Your contract",
+		HTML:           "<p>Hello, your contract is available.</p>",
 		IdempotencyKey: &key,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	if response.HTTPCode == 409 && response.Data != nil && response.Data.Code == reikemmail.IdempotencyConflictCode {
-		log.Fatal("Der Schlüssel gehört bereits zu einem anderen Versandauftrag")
+		log.Fatal("The idempotency key is already in use for a different send request")
 	}
 	if response.HTTPCode < 200 || response.HTTPCode >= 300 {
-		log.Fatalf("Versand abgelehnt (HTTP %d)", response.HTTPCode)
+		log.Fatalf("Send request rejected (HTTP %d)", response.HTTPCode)
 	}
 	if response.Data != nil {
-		log.Println("Queue-IDs", response.Data.QueueIDs)
+		log.Println("Queue IDs", response.Data.QueueIDs)
 	}
 }
 ```
 
-### Client konfigurieren
+### Client configuration
 
-- `BaseURL` akzeptiert eine Origin, einen Reverse-Proxy-Pfad oder eine bestehende `…/api/send`-, `…/api/v2`- oder `…/api/v2/send`-URL. `https://mail.example.org/proxy` verwendet den Endpunktpfad `/proxy/api/v2`.
-- `AuthKey` wird als `Authorization: Bearer <authKey>` gesendet, `AdapterKey` als `X-Adapter-Key`. Beide Schlüssel müssen vollständig sein und aus sichtbaren ASCII-Zeichen ohne Leerzeichen bestehen. Verwende HTTPS für Live-Anfragen.
-- `ConnectTimeout` gilt für DNS, TCP und TLS und beträgt standardmäßig 10 Sekunden. `RequestTimeout` begrenzt den HTTP-Austausch einschließlich Antwortkörper auf standardmäßig 30 Sekunden. Ein kürzeres Kontext-Zeitlimit hat Vorrang. Der Client ist nebenläufig nutzbar. Er führt jede HTTP-Anfrage einmal aus und gibt Weiterleitungen als Antwort zurück.
+- `BaseURL` accepts a URL origin, a reverse-proxy path, or an existing URL ending in `/api/send`, `/api/v2`, or `/api/v2/send`. With `https://mail.example.org/proxy`, the endpoint prefix is `/proxy/api/v2`.
+- The client sends `AuthKey` as `Authorization: Bearer <authKey>` and `AdapterKey` as `X-Adapter-Key`. Supply both full keys using visible ASCII characters without spaces. Use HTTPS for live requests.
+- `ConnectTimeout` covers DNS, TCP, and TLS and defaults to 10 seconds. `RequestTimeout` covers the full HTTP exchange, including the response body, and defaults to 30 seconds. An earlier context deadline takes precedence. The client is safe for concurrent use. It sends each HTTP request once and returns redirects to the caller.
 
-## API im Überblick
+## API overview
 
-| Methode | HTTP-Endpunkt | Verwendung |
+| Method | Endpoint | Use |
 | --- | --- | --- |
-| `SendMail` | `POST /api/v2/send` | Eine Nachricht an einen oder mehrere To-Empfänger in die Warteschlange stellen. |
-| `SendMailList` | `POST /api/v2/send` | Alias mit denselben Optionen. Im Schnellstart lässt sich `SendMail` direkt durch `SendMailList` ersetzen. |
-| `SendPersonalizedMailBatch` | `POST /api/v2/send-batch` | Bis zu 100 Nachrichten mit gemeinsamen Defaults und getrennten Ergebnissen einreichen. |
-| `GetMailHistory` | `POST /api/v2/history` | Nach Kalenderdaten und Nachrichten-IDs filtern. |
-| `DownloadFile` | `POST /api/v2/files/download` | Dateiinhalte im Speicher zurückgeben oder lokal speichern. |
-| `CreateAttachments` | Lokal | Dateien als binäre Anhänge einlesen. Auch als Client-Methode verfügbar. |
+| `SendMail` | `POST /api/v2/send` | Queue one message for one or more To recipients. |
+| `SendMailList` | `POST /api/v2/send` | Alias for `SendMail` with the same options. |
+| `SendPersonalizedMailBatch` | `POST /api/v2/send-batch` | Submit up to 100 messages with shared defaults and per-message results. |
+| `GetMailHistory` | `POST /api/v2/history` | Filter by calendar dates and message IDs. |
+| `DownloadFile` | `POST /api/v2/files/download` | Return file contents in memory or save them locally. |
+| `CreateAttachments` | Local | Read files as binary attachments. Also available as a client method. |
 
-Beim Versand sind `To`, `Subject` und `HTML` erforderlich. Doppelte Empfänger werden in der Reihenfolge To, CC, BCC entfernt. Reply-To wird unabhängig dedupliziert. `Some(wert)` setzt ein optionales Feld, `Null[T]()` sendet explizit `null`. Bei Listen lässt `nil` das Feld aus und eine initialisierte leere Liste sendet `[]`. `DelayUntil` erwartet Unixsekunden, etwa `Some(zeit.Unix())`.
+Sending requires `To`, `Subject`, and `HTML`. Recipients are deduplicated in To, CC, BCC order. Reply-To is deduplicated separately. Use `Some(value)` to set a value or `Null[T]()` to send an explicit `null`. A nil slice omits the field, while an initialized empty slice sends `[]`. `DelayUntil` accepts Unix seconds, for example `Some(sendTime.Unix())`.
 
-### Stapel mit Anhängen
+### Batches with attachments
 
-Lege `Vertrag.pdf` ins Arbeitsverzeichnis. Die erste Nachricht erbt den Stapelanhang. Die zweite überschreibt ihn mit einer leeren Liste. Gemeinsame Empfängerlisten und der Filterkontext funktionieren nach demselben Prinzip.
+Place `contract.pdf` in the working directory. The first message inherits the batch attachment. The second overrides it with an empty slice. Shared recipient lists and filter context follow the same rules.
 
 ```go
 package main
@@ -102,24 +102,24 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	files, err := client.CreateAttachments("Vertrag.pdf")
+	files, err := client.CreateAttachments("contract.pdf")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	response, err := client.SendPersonalizedMailBatch(context.Background(), reikemmail.SendPersonalizedMailBatchOptions{
 		Attachments:   files,
-		FilterContext: reikemmail.Some("Vertragsunterlagen"),
+		FilterContext: reikemmail.Some("Contract documents"),
 		Messages: []reikemmail.SendMailOptions{
 			{
-				To:      []reikemmail.MailAddress{{Email: "kunde@example.org"}},
-				Subject: "Ihr Vertrag",
-				HTML:    "<p>Im Anhang steht Ihr Vertrag.</p>",
+				To:      []reikemmail.MailAddress{{Email: "customer@example.org"}},
+				Subject: "Your contract",
+				HTML:    "<p>Your contract is attached.</p>",
 			},
 			{
 				To:          []reikemmail.MailAddress{{Email: "team@example.org"}},
-				Subject:     "Interne Info",
-				HTML:        "<p>Die Unterlagen wurden versendet.</p>",
+				Subject:     "Internal update",
+				HTML:        "<p>The documents have been sent.</p>",
 				Attachments: []reikemmail.Attachment{},
 			},
 		},
@@ -127,20 +127,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("HTTP-Status des Stapels", response.HTTPCode)
+	log.Println("Batch HTTP status", response.HTTPCode)
 	if response.Data != nil {
 		for _, result := range response.Data.Results {
-			log.Println("Nachricht", result.Index, result.Status, result.Success)
+			log.Println("Message", result.Index, result.Status, result.Success)
 		}
 	}
 }
 ```
 
-`CreateAttachments` ermittelt den MIME-Typ aus der Dateiendung anhand der Go-MIME-Zuordnung des Hosts. Für einen festgelegten Typ übergib `Attachment{Filename: ..., ContentType: ..., FilePath: ...}` oder verwende `Content` für vorhandene Bytes. Sobald eine Anfrage einen Anhang enthält, verwendet das SDK Multipart. Alle anderen Anfragen verwenden JSON.
+`CreateAttachments` infers the MIME type from the file extension using Go's MIME mappings on the host. To specify an exact type, pass `Attachment{Filename: ..., ContentType: ..., FilePath: ...}`, or use `Content` for bytes you already have. The SDK encodes requests with attachments as multipart and other requests as JSON.
 
-### Verlauf und Downloads
+### History and downloads
 
-`GetMailHistory` akzeptiert Kalenderdaten im Format `YYYY-MM-DD`. Ohne IDs ist `DateFrom` erforderlich. `ParseMessageIDs` verarbeitet kommagetrennte Werte. Sende IDs als Dezimalstrings bis `9223372036854775807`.
+`GetMailHistory` accepts calendar dates in `YYYY-MM-DD` format. `DateFrom` is required when you omit message IDs. `ParseMessageIDs` accepts comma-separated values. Pass IDs as decimal strings up to `9223372036854775807`.
 
 ```go
 history, err := client.GetMailHistory(context.Background(), reikemmail.GetMailHistoryOptions{
@@ -152,11 +152,11 @@ if err != nil {
 	log.Fatal(err)
 }
 if history.Data != nil && history.Data.History != nil {
-	log.Println("Ausgehende Nachrichten", len(history.Data.History.Outbound))
+	log.Println("Outbound messages", len(history.Data.History.Outbound))
 }
 ```
 
-`DownloadFile` erwartet `Inbound` oder `Outbound` und eine dezimale `FileID`. Mit `TargetPath` speichert der Client die Datei nach erfolgreicher Prüfung der Antwort. Ein vorhandenes Verzeichnis oder ein abschließender Separator verwendet den bereinigten Serverdateinamen. Bei `nil` stehen die Bytes in `File.Content` bereit.
+`DownloadFile` takes `Inbound` or `Outbound` and a decimal `FileID`. Set `TargetPath` to save the file after the client validates the response. An existing directory or a path with a trailing separator uses the sanitized filename from the server. Leave `TargetPath` nil to read the bytes from `File.Content`.
 
 ```go
 target := "downloads/"
@@ -167,18 +167,18 @@ if err != nil {
 	log.Fatal(err)
 }
 if result.APIError != nil {
-	log.Fatalf("Download abgelehnt (HTTP %d)", result.APIError.HTTPCode)
+	log.Fatalf("Download rejected (HTTP %d)", result.APIError.HTTPCode)
 }
-log.Println("Gespeichert", result.File.Path)
+log.Println("Saved", result.File.Path)
 ```
 
-## Antworten und Fehler
+## Responses and errors
 
-Gültige API-Envelopes werden auch bei HTTP 4xx und 5xx als Werte zurückgegeben. `HTTPCode` enthält den tatsächlichen HTTP-Status. `Status` stammt aus dem JSON-Envelope. `APIInteger` erhält Zahlen- und String-IDs exakt als Text. `Raw` bewahrt zusätzliche Felder und exakte Zahlentokens. Es bleibt auch bei einem gültigen Envelope mit leerem Go-Feld `Data` auslesbar.
+The client returns valid API envelopes as values, including HTTP 4xx and 5xx responses. `HTTPCode` holds the actual HTTP status, while `Status` comes from the JSON envelope. `APIInteger` preserves numeric and string IDs exactly as text. `Raw` preserves additional fields and exact number tokens, even when a valid envelope has a nil `Data` field in Go.
 
-Ungültige Eingaben, Übertragungsfehler, unlesbare Serverantworten und fehlgeschlagene Dateizugriffe liefern einen Go-Fehler. `errors.As` unterscheidet `*reikemmail.TransportError` und `*reikemmail.ResponseError`. `errors.Is` erkennt `context.Canceled` und `context.DeadlineExceeded`.
+Invalid input, transport failures, unreadable responses, and file I/O failures return a Go error. Use `errors.As` to identify `*reikemmail.TransportError` and `*reikemmail.ResponseError`. Use `errors.Is` to check for `context.Canceled` and `context.DeadlineExceeded`.
 
-## Entwicklung und Releases
+## Development and releases
 
 ```sh
 go vet ./...
@@ -190,10 +190,23 @@ go mod verify
 go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 ```
 
-Die Tests verwenden lokale `httptest`-Server mit Testschlüsseln. `go test -coverpkg=./ ./tests/...` misst die SDK-Abdeckung. Die Zuordnung zum TypeScript-Client steht im [API-Abgleich](docs/api-parity.md).
+Tests use local `httptest` servers with test credentials. Run `go test -coverpkg=./ ./tests/...` to measure SDK coverage. The API table above matches the four TypeScript client routes. Go preserves their JSON and multipart formats, authorization headers, and response envelopes.
 
-Go-Releases erhalten eigenständige SemVer-Tags. Ab Modulversion `v2` bekommt der Importpfad den Suffix `/v2`. Die von diesem SDK verwendete Mail-API ist bereits v2. Für die Einrichtung, Freigabe und Release-Notizen gilt die [GitHub-Dokumentation](docs/github-setup.md).
+### GitHub maintenance
 
-## Lizenz
+- Protect `main` with one approving review, dismissal of stale approvals, and the GitHub Actions **Required CI** check on up-to-date branches. Enable native squash auto-merge and branch cleanup after merge. Keep the rules against force pushes and deletion in a separate ruleset that applies to everyone, including administrators. [Repository rulesets](https://github.com/rkstraessler/ReikemMailClient_GO/rules)
+- Set the `dependabot-maintenance` environment to allow only `main`. Install the private maintenance app for this repository with **Contents**, **Pull requests**, and **Workflows** read and write access. Store its client ID as the `PR_AUTOMATION_CLIENT_ID` Actions variable and its private key as the encrypted `PR_AUTOMATION_PRIVATE_KEY` environment secret. The workflow limits each installation token to this repository. [Actions environments](https://github.com/rkstraessler/ReikemMailClient_GO/settings/environments)
+- Pushes and pull request activity trigger checks for open PRs behind their target branches. The app asks GitHub to update branches within its installation and honors GitHub's mergeability checks. A periodic check covers activity that does not trigger a workflow. Signed, compatible Dependabot updates targeting `main` can receive automatic approval after **Required CI** passes on the current head. [Pull request maintenance workflow](.github/workflows/dependabot-automerge.yml)
+- Dependabot checks Go modules and Actions daily at 03:00 in `Europe/Berlin`. Enable Dependabot alerts and security updates in repository settings. The autofix.ci app runs `gofmt` on PR branches. Sync repository labels with `bash .github/scripts/sync-labels.sh`. [Dependabot configuration](.github/dependabot.yml) · [autofix.ci setup](https://autofix.ci/setup)
+
+### Releases
+
+1. Create the approved SemVer tag at a commit on `main` with successful **Required CI**.
+2. Run **Verify release** on `main` with the tag. The workflow checks the module path, race tests, build, dependency integrity, and vulnerability scan at the tagged commit.
+3. Publish English notes on GitHub Releases after verification. Include the release banner from the workflow summary and smoke-test installation with `go get` at the tag. [Release workflow](.github/workflows/release.yml) · [Release banner](.github/assets/release-banners/reikem-mail-client-go-release-banner.png) · [GitHub Releases](https://github.com/rkstraessler/ReikemMailClient_GO/releases)
+
+The Go module follows SemVer. A future Go module version `v2` would add the `/v2` import path suffix. This SDK already uses v2 of the Mail API.
+
+## License
 
 [MIT](LICENSE)
