@@ -1,0 +1,20 @@
+# API-Abgleich mit dem TypeScript-Client
+
+Referenz ist `@reikem/mail-client` 2.0.0 aus `ReikemMailClient_TS` bei Commit `a327fceccd66b7cb1eb6507ddad2e43c9fca4a2e`. Der Abgleich umfasst die öffentlichen Exporte, den Transport, die Normalisierungshelfer und die Vertrags- und HTTP-Tests.
+
+| TypeScript | Go | HTTP-Vertrag und Prüfabdeckung |
+| --- | --- | --- |
+| `new EmailAPIClient(options)` bzw. URL und zwei Schlüssel | `NewClient(Config)` | Origin, Proxy-Pfad sowie alte und v2-Versand-URLs werden auf `/api/v2` abgebildet. Beide Schlüssel werden auf sichtbares ASCII geprüft. `TestClientURL`, `TestInvalidConfig` |
+| `sendMail` | `Client.SendMail` | `POST /api/v2/send`. Gruppiertes `to`, `cc`, `bcc`, `replyTo`, `subject`, `html`, optional `text`, `idempotencyKey`, `attachments`, `filterContext`, `delayUntil`. JSON oder Multipart. `TestSendMailMultipart`, `TestMailValidation` |
+| `sendMailList` | `Client.SendMailList` | Dieselbe v2-Operation und dieselben Optionen wie beim Einzelversand. `TestSendMailListJSON` |
+| `sendPersonalizedMailBatch` | `Client.SendPersonalizedMailBatch` | `POST /api/v2/send-batch` mit `{ "messages": [...] }`. Defaults vor dem Versand expandiert, Attachments global indiziert und pro Nachricht limitiert. `TestSendBatchDefaults`, `TestBatchJSONAndLimits`, `TestAttachmentFilesAndLimits` |
+| `getMailHistory` | `Client.GetMailHistory`, `ParseMessageIDs` | `POST /api/v2/history` mit `dateFrom`, `dateTo` und deduplizierten dezimalen `messageIds`. IDs können allein verwendet werden. Keine Seiten- oder Cursorparameter im v2-Vertrag. `TestHistory`, `TestInvalidHistory` |
+| `downloadFile` | `Client.DownloadFile` | `POST /api/v2/files/download` mit `source` und dezimalem `fileId`. Erfolg liefert binäre Bytes oder speichert an `TargetPath`. HTTP-Fehler mit JSON-Envelope bleiben API-Werte. `TestFileDownload`, `TestDownloadFilename`, `TestDownloadAPIErrorsPreserveTarget`, `TestDownloadValidation` |
+| `createAttachments` als Export und Methode, `BinaryAttachment`, `EmailAttachment` | `CreateAttachments` als Export und Methode, `Attachment` | Byte- und Dateipfad-Anhänge, eindeutige Dateinamen und normalisierte MIME-Typen. Dateityperkennung über die Go-MIME-Datenbank des Hosts. `TestAttachmentFilesAndLimits` |
+| `MailStatus.all`, `MailStatus.isKnown`, `QueueStatus` | `KnownMailStatuses`, `MailStatus.IsKnown`, `MailStatus` | Acht bekannte Queue-Statuswerte und unveränderte künftige Werte. `TestSendBatchDefaults` |
+| `ApiResponse`, `ApiData`, `SendResponse`, `SendData`, `BatchResponse`, `BatchData`, `BatchResult`, `IdempotencyConflictResponse` | `APIResponse[T]`, `APIData`, `SendResponse`, `SendData`, `BatchResponse`, `BatchData`, `BatchResult`, `IdempotencyConflictCode` | Echter HTTP-Status unabhängig von `httpCode` im Body. HTTP 409 und Batch-Teilergebnisse als Werte. Exakte numerische Tokens in `Raw`, bekannte IDs als `APIInteger`. `TestResponseErrors`, `TestHistory`, `TestSendBatchDefaults` |
+| `MailAddress`, `ReplyTo`, `DelayUntil`, `PersonalizedEmailMessage`, History- und Download-Optionen | `MailAddress`, `Optional[T]`, typisierte Optionsstrukturen | Go bildet Typvarianten über Dezimalstrings, Unixsekunden, Kalenderstrings und Listen ab. `nil`, leere Listen und explizites `null` behalten die Wire-Semantik. `TestSendMailListJSON`, `TestSendBatchDefaults`, `TestHistory` |
+| `MailEntry`, `FilterResults`, `Rejection`, `AIRetry`, `AIResult` | Analoge Go-Modelle plus `MailHistory`, `FilterDetails` und `AIFilterDetails` | Optionale Felder, verschachtelte Ergebnisse und Fallback auf den Original-Envelope. `TestHistory`, `TestSendBatchDefaults` |
+| `EmailAPITransportError` | `TransportError` und `ResponseError` | Dieselben Header auf allen vier Endpunkten, einmaliger POST ohne Redirect oder Retry, 10 s Verbindungs- und 30 s Gesamtlaufzeit. Go ergänzt Kontextabbruch. `TestNoRedirectOrRetry`, `TestTransportCancellation`, `TestConcurrentUse` |
+
+Alle API-Tests verwenden lokale Testserver. Die API entscheidet über Zustellung, Verlauf, Idempotenz und Filterung.
