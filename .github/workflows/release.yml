@@ -59,4 +59,4 @@ jobs:
           test -s "$banner"
           commit=$(git rev-parse HEAD)
           printf '![REIKEM Mail Client for Go release notes](https://raw.githubusercontent.com/%s/%s/%s)\n\n' "$GITHUB_REPOSITORY" "$commit" "$banner" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Verified module `%s` at commit `%s`.\n' "$TAG" "$commit" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Verified module %s at commit %s.\n' "$TAG" "$commit" >> "$GITHUB_STEP_SUMMARY"
