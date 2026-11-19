@@ -98,7 +98,6 @@ type reviewState struct {
 	Mergeable        string
 	MergeStateStatus string
 	ReviewDecision   string
-	AutoMergeRequest json.RawMessage
 }
 
 func cliJSON[T any](ctx context.Context, cmd Command, token string, args ...string) (T, error) {
