@@ -1,10 +1,16 @@
 # REIKEM Mail Client for Go
 
-Go SDK for the REIKEM Mail API v2. It supports sending a single message to multiple recipients, personalized batches, mail history, and file downloads. The module uses the Go standard library.
+[![CI](https://github.com/rkstraessler/ReikemMailClient_GO/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rkstraessler/ReikemMailClient_GO/actions/workflows/ci.yml)
+
+Go SDK for the REIKEM Mail API v2. Send email, submit personalized batches, query mail history, and download files. The module uses the Go standard library.
+
+[GitHub Releases](https://github.com/rkstraessler/ReikemMailClient_GO/releases) · [Report an issue](https://github.com/rkstraessler/ReikemMailClient_GO/issues/new)
+
+Also available for [TypeScript](https://github.com/rkstraessler/ReikemMailClient_TS) and [Rust](https://github.com/rkstraessler/ReikemMailClient_RS).
 
 ## Installation
 
-Requires Go 1.27.4 or later. Install the tagged release for a reproducible build.
+Requires Go 1.27.4 or later. Install the tagged module from the public Go module proxy. [Package documentation on pkg.go.dev](https://pkg.go.dev/github.com/rkstraessler/ReikemMailClient_GO)
 
 ```sh
 go get github.com/rkstraessler/ReikemMailClient_GO@v1.0.0
@@ -12,7 +18,7 @@ go get github.com/rkstraessler/ReikemMailClient_GO@v1.0.0
 
 The Go package name is `reikemmail`. Use `@main` to try the latest development version.
 
-## Quickstart
+## Quick start
 
 Set `MAIL_API_URL`, `MAIL_AUTH_KEY`, and `MAIL_ADAPTER_KEY` in your environment. Update the recipient and idempotency key for your send request.
 
@@ -37,9 +43,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	key := "contract:4711:v1"
+	key := "contract:4711:v2:ready"
 	response, err := client.SendMail(context.Background(), reikemmail.SendMailOptions{
-		To:             []reikemmail.MailAddress{{Email: "customer@example.org", Name: reikemmail.Some("Erika Müller")}},
+		To:             []reikemmail.MailAddress{{Email: "customer@example.org", Name: reikemmail.Some("Alex Morgan")}},
 		Subject:        "Your contract",
 		HTML:           "<p>Hello, your contract is available.</p>",
 		IdempotencyKey: &key,
@@ -59,7 +65,7 @@ func main() {
 }
 ```
 
-### Client configuration
+### Configuration
 
 - `BaseURL` accepts a URL origin, a reverse-proxy path, or an existing URL ending in `/api/send`, `/api/v2`, or `/api/v2/send`. With `https://mail.example.org/proxy`, the endpoint prefix is `/proxy/api/v2`.
 - The client sends `AuthKey` as `Authorization: Bearer <authKey>` and `AdapterKey` as `X-Adapter-Key`. Supply both full keys using visible ASCII characters without spaces. Use HTTPS for live requests.
@@ -76,11 +82,11 @@ func main() {
 | `DownloadFile` | `POST /api/v2/files/download` | Return file contents in memory or save them locally. |
 | `CreateAttachments` | Local | Read files as binary attachments. Also available as a client method. |
 
+### Send and batch options
+
 Sending requires `To`, `Subject`, and `HTML`. Recipients are deduplicated in To, CC, BCC order. Reply-To is deduplicated separately. Use `Some(value)` to set a value or `Null[T]()` to send an explicit `null`. A nil slice omits the field, while an initialized empty slice sends `[]`. `DelayUntil` accepts Unix seconds, for example `Some(sendTime.Unix())`.
 
-### Batches with attachments
-
-Place `contract.pdf` in the working directory. The first message inherits the batch attachment. The second overrides it with an empty slice. Shared recipient lists and filter context follow the same rules.
+For the personalized batch example, place `contract.pdf` in the working directory. The first message inherits the batch attachment. The second overrides it with an empty slice. Shared recipient lists and filter context follow the same rules.
 
 ```go
 package main
@@ -172,13 +178,13 @@ if result.APIError != nil {
 log.Println("Saved", result.File.Path)
 ```
 
-## Responses and errors
+### Responses and errors
 
 The client returns valid API envelopes as values, including HTTP 4xx and 5xx responses. `HTTPCode` holds the actual HTTP status, while `Status` comes from the JSON envelope. `APIInteger` preserves numeric and string IDs exactly as text. `Raw` preserves additional fields and exact number tokens, even when a valid envelope has a nil `Data` field in Go.
 
 Invalid input, transport failures, unreadable responses, and file I/O failures return a Go error. Use `errors.As` to identify `*reikemmail.TransportError` and `*reikemmail.ResponseError`. Use `errors.Is` to check for `context.Canceled` and `context.DeadlineExceeded`.
 
-## Development and releases
+## Development
 
 ```sh
 go vet ./...
@@ -190,20 +196,23 @@ go mod verify
 go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 ```
 
-Tests use local `httptest` servers with test credentials. Run `go test -coverpkg=./ ./tests/...` to measure SDK coverage. The API table above matches the four TypeScript client routes. Go preserves their JSON and multipart formats, authorization headers, and response envelopes.
+Tests use local `httptest` servers with test credentials. Run `go test -coverpkg=./ ./tests/...` to measure SDK coverage.
 
-### GitHub maintenance
+### GitHub automation
 
-- Protect `main` with one approving review, dismissal of stale approvals, and the GitHub Actions **Required CI** check on up-to-date branches. Enable native squash auto-merge and branch cleanup after merge. Keep the rules against force pushes and deletion in a separate ruleset that applies to everyone, including administrators. [Repository rulesets](https://github.com/rkstraessler/ReikemMailClient_GO/rules)
-- Set the `dependabot-maintenance` environment to allow only `main`. Install the private maintenance app for this repository with **Contents**, **Pull requests**, and **Workflows** read and write access. Store its client ID as the `PR_AUTOMATION_CLIENT_ID` Actions variable and its private key as the encrypted `PR_AUTOMATION_PRIVATE_KEY` environment secret. The workflow limits each installation token to this repository. [Actions environments](https://github.com/rkstraessler/ReikemMailClient_GO/settings/environments)
-- Pushes and pull request activity trigger checks for open PRs behind their target branches. The app asks GitHub to update branches within its installation and honors GitHub's mergeability checks. A periodic check covers activity that does not trigger a workflow. Signed, compatible Dependabot updates targeting `main` can receive automatic approval after **Required CI** passes on the current head. [Pull request maintenance workflow](.github/workflows/dependabot-automerge.yml)
-- Dependabot checks Go modules and Actions daily at 03:00 in `Europe/Berlin`. Enable Dependabot alerts and security updates in repository settings. The autofix.ci app runs `gofmt` on PR branches. Sync repository labels with `bash .github/scripts/sync-labels.sh`. [Dependabot configuration](.github/dependabot.yml) · [autofix.ci setup](https://autofix.ci/setup)
+- **Branch protection** requires an up-to-date pull request, one current approval, resolved conversations, and the GitHub Actions `Required CI` check. GitHub uses squash merges and deletes merged branches. Repository administrators have a bypass for review and CI. A separate rule blocks force pushes and deletion for everyone. [Review and CI rules](.github/main-ruleset.json) · [History rules](.github/main-history-ruleset.json)
+- **Dependabot** checks Go modules and GitHub Actions daily at 03:00 `Europe/Berlin` and groups routine compatible updates separately from security updates. [Dependabot configuration](.github/dependabot.yml)
+- **PR maintenance** updates conflict-free branches in this repository for open pull requests targeting `main`. The `reikem-github-pr-maintenance` app can approve and squash-merge signed, compatible Dependabot updates after `Required CI` passes on the current head. Major, potentially breaking pre-1.0 minor, and unclassified updates need manual review. [PR maintenance workflow](.github/workflows/dependabot-automerge.yml)
+- **autofix.ci** runs gofmt on pull requests. Its commits rerun CI. [Autofix workflow](.github/workflows/autofix.yml)
 
-### Releases
+Install the official [autofix.ci app](https://github.com/apps/autofix-ci) and the repository-scoped PR maintenance app. Keep the app key in the indicated environment and restrict deployments to `main`. GitHub Actions uses read-only default permissions. Set the environment variable `PR_AUTOMATION_CLIENT_ID` and the encrypted secret `PR_AUTOMATION_PRIVATE_KEY` in `dependabot-maintenance`. To synchronize labels, run `bash .github/scripts/sync-labels.sh`.
+
+## Releases
 
 1. Create the approved SemVer tag at a commit on `main` with successful **Required CI**.
 2. Run **Verify release** on `main` with the tag. The workflow checks the module path, race tests, build, dependency integrity, and vulnerability scan at the tagged commit.
-3. Publish English notes on GitHub Releases after verification. Include the release banner from the workflow summary and smoke-test installation with `go get` at the tag. [Release workflow](.github/workflows/release.yml) · [Release banner](.github/assets/release-banners/reikem-mail-client-go-release-banner.png) · [GitHub Releases](https://github.com/rkstraessler/ReikemMailClient_GO/releases)
+3. The workflow downloads the tagged module from the public Go module proxy and verifies the version, source commit, and checksum.
+4. Publish the GitHub Release notes in English and include the banner from the workflow summary. [Release workflow](.github/workflows/release.yml) · [Release banner](.github/assets/release-banners/reikem-mail-client-go-release-banner.png) · [Go module publishing](https://go.dev/doc/modules/publishing)
 
 The Go module follows SemVer. A future Go module version `v2` would add the `/v2` import path suffix. This SDK already uses v2 of the Mail API.
 

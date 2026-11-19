@@ -41,7 +41,7 @@ func (f *fixture) command(_ context.Context, token string, args ...string) ([]by
 		if token != appToken {
 			f.t.Fatal("installation lookup requires the scoped app token")
 		}
-	case strings.Contains(key, "/update-branch "), strings.Contains(key, "/reviews "), strings.HasPrefix(key, "pr merge "):
+	case strings.Contains(key, "/update-branch "), strings.Contains(key, "/reviews "), strings.Contains(key, "/merge "):
 		if token != appToken {
 			f.t.Fatal("a write used the wrong credential")
 		}
@@ -197,11 +197,11 @@ func TestDependabotAfterSignedBranchUpdate(t *testing.T) {
 				{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":true,
 					"required_status_checks":[{"context":"Required CI","integration_id":15368}]}},
 				{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true}}]`}
-			f.replies["pr view 7 --repo "+repo+" --json state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision,autoMergeRequest"] = response{
-				body: `{"state":"OPEN","headRefOid":"` + newHead + `","baseRefName":"main","mergeable":"MERGEABLE","reviewDecision":"REVIEW_REQUIRED","autoMergeRequest":null}`,
+			f.replies["pr view 7 --repo "+repo+" --json state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision"] = response{
+				body: `{"state":"OPEN","headRefOid":"` + newHead + `","baseRefName":"main","mergeable":"MERGEABLE","reviewDecision":"REVIEW_REQUIRED"}`,
 			}
 			review := "api pulls/7/reviews --method POST -f commit_id=" + newHead + " -f event=APPROVE"
-			merge := "pr merge 7 --repo " + repo + " --squash --auto --match-head-commit " + newHead
+			merge := "api pulls/7/merge --method PUT -f sha=" + newHead + " -f merge_method=squash"
 			f.replies[review] = response{body: `{"state":"APPROVED"}`}
 			f.replies[merge] = response{}
 			if err := f.run(t); err != nil {

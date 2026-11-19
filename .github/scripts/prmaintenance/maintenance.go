@@ -153,7 +153,7 @@ func maintainDependabot(ctx context.Context, config Config, cmd Command, output 
 	}
 	number := strconv.Itoa(pr.Number)
 	review, err := cliJSON[reviewState](ctx, cmd, "", "pr", "view", number, "--repo", repository, "--json",
-		"state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision,autoMergeRequest")
+		"state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision")
 	if err != nil {
 		return err
 	}
@@ -174,13 +174,11 @@ func maintainDependabot(ctx context.Context, config Config, cmd Command, output 
 			return err
 		}
 	}
-	if len(review.AutoMergeRequest) == 0 || string(review.AutoMergeRequest) == "null" {
-		if _, err := cmd(ctx, config.AppToken, "pr", "merge", number, "--repo", repository, "--squash", "--auto",
-			"--match-head-commit", pr.Head.SHA); err != nil {
-			return err
-		}
-		fmt.Fprintf(output, "#%s: requested native squash auto-merge.\n", number)
+	if _, err := githubAPI[json.RawMessage](ctx, cmd, config.AppToken, path+"/merge",
+		"--method", "PUT", "-f", "sha="+pr.Head.SHA, "-f", "merge_method=squash"); err != nil {
+		return err
 	}
+	fmt.Fprintf(output, "#%s: squash-merged the verified revision.\n", number)
 	return nil
 }
 

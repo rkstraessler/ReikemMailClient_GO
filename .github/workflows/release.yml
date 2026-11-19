@@ -52,6 +52,15 @@ jobs:
           go test -race ./...
           go build ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+      - name: Resolve the release through the public Go module proxy
+        env:
+          GOPROXY: https://proxy.golang.org
+        shell: bash
+        run: |
+          module=$(go list -m -f '{{.Path}}')
+          commit=$(git rev-parse HEAD)
+          go mod download -json "$module@$TAG" | jq -e --arg tag "$TAG" --arg commit "$commit" \
+              '.Version == $tag and .Origin.Hash == $commit and (.Sum | startswith("h1:"))'
       - name: Prepare release notes header
         shell: bash
         run: |
